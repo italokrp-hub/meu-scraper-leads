@@ -15,7 +15,7 @@ type SortKey = 'title' | 'category' | 'rating' | 'reviewCount' | 'city';
 const PAGE_SIZE = 50;
 
 export function LeadTable() {
-  const { filteredLeads, updateLeadStatus, setRawModalLead, selectedTemplateId, templates } = useApp();
+  const { filteredLeads, updateLeadStatus, markContacted, setRawModalLead, selectedTemplateId, templates } = useApp();
   const [sortKey, setSortKey] = useState<SortKey>('title');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(0);
@@ -88,6 +88,7 @@ export function LeadTable() {
                   lead={lead}
                   whatsappUrl={whatsappUrl}
                   onView={() => setRawModalLead(lead)}
+                  onWhatsApp={() => markContacted(lead.id)}
                   onCycleStatus={() => updateLeadStatus(lead.id, lead.status === 'pendente' ? 'contatado' : lead.status === 'contatado' ? 'sem_resposta' : 'pendente')}
                 />
               );
@@ -128,10 +129,11 @@ interface LeadRowProps {
   lead: Lead;
   whatsappUrl: string | null;
   onView: () => void;
+  onWhatsApp: () => void;
   onCycleStatus: () => void;
 }
 
-function LeadRow({ lead, whatsappUrl, onView, onCycleStatus }: LeadRowProps) {
+function LeadRow({ lead, whatsappUrl, onView, onWhatsApp, onCycleStatus }: LeadRowProps) {
   return (
     <tr>
       <td>
@@ -158,10 +160,11 @@ function LeadRow({ lead, whatsappUrl, onView, onCycleStatus }: LeadRowProps) {
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Chamar no WhatsApp"
-                className="btn btn-whatsapp h-7 w-7 justify-center rounded-full p-0"
+                onClick={onWhatsApp}
+                title="Enviar WhatsApp"
+                className="btn btn-whatsapp h-7 px-2 py-0 text-[11px]"
               >
-                <MessageCircle size={13} />
+                <MessageCircle size={13} /> WhatsApp
               </a>
             )}
           </div>

@@ -9,7 +9,7 @@ import {
 } from '../LeadCard/leadHelpers';
 
 export function RawLeadModal() {
-  const { rawModalLead, setRawModalLead, selectedTemplateId, templates } = useApp();
+  const { rawModalLead, setRawModalLead, selectedTemplateId, templates, markContacted } = useApp();
 
   if (!rawModalLead) return null;
   const lead = rawModalLead;
@@ -104,6 +104,7 @@ export function RawLeadModal() {
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => markContacted(lead.id)}
                 className="btn btn-whatsapp h-8 px-3 py-1 text-xs"
               >
                 <MessageCircle size={13} /> Abrir WhatsApp

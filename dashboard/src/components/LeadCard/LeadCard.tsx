@@ -17,7 +17,7 @@ interface LeadCardProps {
 }
 
 export function LeadCard({ lead }: LeadCardProps) {
-  const { setRawModalLead, selectedTemplateId, templates, updateLeadStatus } = useApp();
+  const { setRawModalLead, selectedTemplateId, templates, markContacted, updateLeadStatus } = useApp();
 
   const templateBody = templates.find((t) => t.id === selectedTemplateId)?.body ?? '';
   const whatsappUrl = lead.phone.whatsappUrl
@@ -66,9 +66,11 @@ export function LeadCard({ lead }: LeadCardProps) {
             href={whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => markContacted(lead.id)}
             className="btn btn-whatsapp px-3 py-1.5 text-xs"
+            title="Enviar mensagem no WhatsApp"
           >
-            <MessageCircle size={13} /> WhatsApp
+            <MessageCircle size={13} /> Enviar WhatsApp
           </a>
         ) : (
           <span className="btn cursor-not-allowed px-3 py-1.5 text-xs text-gray-500">

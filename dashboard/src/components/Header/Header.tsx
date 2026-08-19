@@ -1,8 +1,8 @@
 import { useApp } from '../../context/AppContext';
-import { Sun, Moon, MessageSquare, Download, Wifi, WifiOff } from 'lucide-react';
+import { Sun, Moon, MessageSquare, Download, Wifi, WifiOff, Loader2 } from 'lucide-react';
 
 export function Header() {
-  const { theme, toggleTheme, kpis, isLoading, setTemplateDrawerOpen, setExportModalOpen } = useApp();
+  const { theme, toggleTheme, kpis, apiOnline, setTemplateDrawerOpen, setExportModalOpen } = useApp();
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0a0c14]/80 backdrop-blur-xl">
@@ -21,16 +21,22 @@ export function Header() {
         {/* Scraper status */}
         <div className="hidden md:flex items-center gap-6">
           <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5">
-            {isLoading ? (
+            {apiOnline === null ? (
               <>
-                <WifiOff size={14} className="text-amber-400" />
-                <span className="text-xs text-amber-400 font-medium">Carregando...</span>
+                <Loader2 size={14} className="animate-spin-slow text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Verificando API...</span>
               </>
-            ) : (
+            ) : apiOnline ? (
               <>
                 <span className="animate-pulse-dot h-2 w-2 rounded-full bg-emerald-400" />
                 <Wifi size={14} className="text-emerald-400" />
-                <span className="text-xs text-emerald-400 font-semibold">Scraper Ativo</span>
+                <span className="text-xs text-emerald-400 font-semibold">API Conectada</span>
+              </>
+            ) : (
+              <>
+                <span className="h-2 w-2 rounded-full bg-red-400" />
+                <WifiOff size={14} className="text-red-400" />
+                <span className="text-xs text-red-400 font-semibold">API Offline</span>
               </>
             )}
           </div>

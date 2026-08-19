@@ -1,6 +1,7 @@
-import { Search, Filter, LayoutGrid, Table2, X } from 'lucide-react';
+import { Search, Filter, LayoutGrid, Table2, X, FileText, FileJson } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { LeadStatus } from '../../types/lead';
+import { exportLeads, ALL_COLUMNS } from '../../utils/exportUtils';
 
 const STATUS_OPTIONS: { value: LeadStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Todos os Status' },
@@ -103,6 +104,25 @@ export function ControlBar() {
         <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">
           {filteredLeads.length.toLocaleString('pt-BR')} resultados
         </span>
+
+        {filteredLeads.length > 0 && (
+          <div className="flex items-center gap-1.5" title="Baixar lista filtrada">
+            <button
+              onClick={() => exportLeads(filteredLeads, { format: 'csv', filter: 'all', columns: ALL_COLUMNS })}
+              className="btn btn-secondary px-3 py-1.5 text-xs"
+              title="Baixar filtrados em CSV"
+            >
+              <FileText size={13} /> CSV
+            </button>
+            <button
+              onClick={() => exportLeads(filteredLeads, { format: 'json', filter: 'all', columns: ALL_COLUMNS })}
+              className="btn btn-secondary px-3 py-1.5 text-xs"
+              title="Baixar filtrados em JSON"
+            >
+              <FileJson size={13} /> JSON
+            </button>
+          </div>
+        )}
 
         {/* View toggle */}
         <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">

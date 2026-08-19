@@ -8,6 +8,12 @@ const STORAGE_KEY_THEME = 'leadradar:theme';
 
 const DEFAULT_TEMPLATES: WhatsAppTemplate[] = [
   {
+    id: 'tpl-compra-sucata',
+    name: 'Compra de Sucata Eletrônica',
+    body: 'Olá, tudo bem? Trabalho com reciclagem / reaproveitamento de componentes e estou comprando sucata e placas condenadas de celulares/eletrônicos em lote. Vocês têm placas velhas ou aparelhos sucateados parados aí para vender? Compro em quantidade!',
+    createdAt: new Date().toISOString(),
+  },
+  {
     id: 'tpl-1',
     name: 'Apresentação Geral',
     body: 'Olá! Tudo bem? Vi a {empresa} no Google Maps e fiquei interessado nos seus serviços. Posso saber mais sobre os preços e disponibilidade?',
