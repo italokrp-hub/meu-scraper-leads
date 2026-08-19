@@ -16,8 +16,11 @@ const ENV_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
 
 export const API_BASE_URL = ENV_BASE ? ENV_BASE.trim().replace(/\/+$/, '') : '';
 
+// As rotas já são passadas com o prefixo /api (ex.: /api/v1/jobs). Sem base URL
+// configurada usamos o caminho relativo como está, que é encaminhado para o
+// backend pelo proxy do Vite (dev) ou pelos rewrites da Vercel (produção).
 const apiUrl = (path: string): string =>
-  API_BASE_URL ? `${API_BASE_URL}${path}` : `/api${path}`;
+  API_BASE_URL ? `${API_BASE_URL}${path}` : path;
 
 export type JobStatus = 'pending' | 'working' | 'ok' | 'failed';
 
@@ -72,6 +75,10 @@ export function buildSearchKeyword(category: string, city: string): string {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(apiUrl(path), init);
 
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('text/csv')) return (await res.text()) as T;
+  if (res.status === 204) return undefined as T;
+
   if (!res.ok) {
     let message = `Erro de conexão (HTTP ${res.status})`;
     try {
@@ -83,12 +90,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(message);
   }
 
-  if (res.status === 204) return undefined as T;
+  if (contentType.includes('application/json')) {
+    return (await res.json()) as T;
+  }
 
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('text/csv')) return (await res.text()) as T;
+  const text = await res.text();
+  if (text.trim().startsWith('{')) {
+    return JSON.parse(text) as T;
+  }
 
-  return (await res.json()) as T;
+  throw new Error(`Resposta inesperada do servidor (HTTP ${res.status})`);
 }
 
 /** Cria um job de scraping no backend. */
@@ -122,7 +133,7 @@ export function getJobStatus(jobId: string): Promise<WebJob> {
 /** Baixa o CSV de resultados de um job já concluído (com retry). */
 export async function downloadJobResults(jobId: string): Promise<string> {
   const url = `/api/v1/jobs/${encodeURIComponent(jobId)}/download`;
-  const fullUrl = API_BASE_URL ? `${API_BASE_URL}${url}` : `/api${url}`;
+  const fullUrl = apiUrl(url);
 
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -141,6 +152,20 @@ export async function downloadJobResults(jobId: string): Promise<string> {
 /** Lista os jobs mais recentes criados no backend. */
 export function listJobs(): Promise<WebJob[]> {
   return request<WebJob[]>('/api/v1/jobs');
+}
+
+/**
+ * Verifica se o backend está acessível. Qualquer resposta HTTP (mesmo 4xx/5xx)
+ * indica que o servidor está ONLINE e respondendo; somente falha de rede/CORS
+ * (TypeError) é tratada como offline.
+ */
+export async function checkApiStatus(): Promise<boolean> {
+  try {
+    const res = await fetch(apiUrl('/api/v1/jobs'), { method: 'GET' });
+    return res.status >= 100;
+  } catch {
+    return false;
+  }
 }
 
 export function sleep(ms: number): Promise<void> {

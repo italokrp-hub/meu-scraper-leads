@@ -3,7 +3,7 @@ import type { Lead, LeadStatus, WhatsAppTemplate } from '../types/lead';
 import type { RawLead } from '../types/lead';
 import { processLeads } from '../utils/phoneUtils';
 import { parseResultsCsv } from '../utils/csv';
-import { createSearchJob, pollJob, listJobs, downloadJobResults, buildSearchKeyword } from '../lib/api';
+import { createSearchJob, pollJob, downloadJobResults, buildSearchKeyword, checkApiStatus } from '../lib/api';
 import type { SearchState } from '../lib/api';
 import {
   loadTemplates,
@@ -132,8 +132,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Check API connectivity once
   useEffect(() => {
-    listJobs()
-      .then(() => setApiOnline(true))
+    checkApiStatus()
+      .then(setApiOnline)
       .catch(() => setApiOnline(false));
   }, []);
 
