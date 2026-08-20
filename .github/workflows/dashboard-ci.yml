@@ -1,0 +1,33 @@
+name: dashboard-build
+
+permissions: {}
+
+on:
+  push:
+    branches: [main]
+    paths: [dashboard/**]
+  pull_request:
+    branches: [main]
+    paths: [dashboard/**]
+
+jobs:
+  build:
+    name: Build Dashboard (Vite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build

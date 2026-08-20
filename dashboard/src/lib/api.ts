@@ -59,6 +59,11 @@ export interface CreateJobOptions {
   depth: number;
   radius: number;
   maxTimeSeconds: number;
+  /** Modo rápido: scraping via HTTP "stealth" (sem Chromium), muito mais leve — essencial no plano gratuito do Render (512MB). */
+  fastMode: boolean;
+  /** Requerido quando fastMode=true. String "lat,lon" do centro da cidade. */
+  lat: string;
+  lon: string;
 }
 
 /**
@@ -72,8 +77,35 @@ export function buildSearchKeyword(category: string, city: string): string {
   return cat || cty;
 }
 
+/**
+ * Busca HTTP com tolerância a respostas transitórias (502/503/504) e falhas de
+ * rede. São tentadas até `attempts` tentativas com pausa entre elas — assim o
+ * servidor do Render pode ficar momentaneamente sobrecarregado sem derrubar a
+ * busca no front-end.
+ */
+async function fetchWithRetry(url: string, init?: RequestInit, attempts = 3): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const res = await fetch(url, init);
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        lastError = new Error(`Servidor temporariamente indisponível (HTTP ${res.status})`);
+        await sleep(3000);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error('Falha de rede');
+      await sleep(3000);
+    }
+  }
+
+  throw lastError;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(apiUrl(path), init);
+  const res = await fetchWithRetry(apiUrl(path), init, 3);
 
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('text/csv')) return (await res.text()) as T;
@@ -112,9 +144,9 @@ export function createSearchJob(opts: CreateJobOptions): Promise<CreateJobRespon
       keywords: opts.keywords,
       lang: opts.lang,
       zoom: opts.zoom,
-      lat: '0',
-      lon: '0',
-      fast_mode: false,
+      lat: opts.lat,
+      lon: opts.lon,
+      fast_mode: opts.fastMode,
       radius: opts.radius,
       depth: opts.depth,
       email: false,
@@ -132,21 +164,16 @@ export function getJobStatus(jobId: string): Promise<WebJob> {
 
 /** Baixa o CSV de resultados de um job já concluído (com retry). */
 export async function downloadJobResults(jobId: string): Promise<string> {
-  const url = `/api/v1/jobs/${encodeURIComponent(jobId)}/download`;
-  const fullUrl = apiUrl(url);
+  const url = apiUrl(`/api/v1/jobs/${encodeURIComponent(jobId)}/download`);
 
-  let lastError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const res = await fetch(fullUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.text();
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error('Falha ao baixar resultados');
-      await sleep(2000);
-    }
+    const res = await fetchWithRetry(url, undefined, 3);
+    if (res.ok) return await res.text();
+    // 404: o CSV ainda não foi gravado no servidor — aguarda e tenta de novo
+    await sleep(2500);
   }
-  throw lastError;
+
+  throw new Error('Falha ao baixar os resultados da busca. Tente novamente.');
 }
 
 /** Lista os jobs mais recentes criados no backend. */
@@ -207,4 +234,67 @@ export interface SearchState {
   status: JobStatus | null;
   resultCount: number;
   error: string | null;
+}
+
+// ─── Geocoding local (Nominatim/OSM) ─────────────────────────────────────────
+
+const GEO_CACHE_KEY = 'leadradar:geocache';
+
+function cachedCoords(city: string): { lat: number; lon: number } | null {
+  try {
+    const raw = localStorage.getItem(GEO_CACHE_KEY);
+    if (!raw) return null;
+    const map = JSON.parse(raw) as Record<string, { lat: number; lon: number } | undefined>;
+    return map[city.toLowerCase()] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCoords(city: string, coords: { lat: number; lon: number }): void {
+  try {
+    const raw = localStorage.getItem(GEO_CACHE_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, { lat: number; lon: number }>) : {};
+    map[city.toLowerCase()] = coords;
+    localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(map));
+  } catch {
+    // localStorage indisponível — segue sem cache
+  }
+}
+
+/**
+ * Converte o nome de uma cidade para coordenadas (geocódigo) usando o
+ * Nominatim/OpenStreetMap, limitado ao Brasil. Necessário para o modo rápido,
+ * que pesquisa por área (lat/lon + raio) sem abrir um navegador.
+ */
+export async function geocodeCity(city: string): Promise<{ lat: number; lon: number } | null> {
+  const cached = cachedCoords(city.trim());
+  if (cached) return cached;
+
+  try {
+    const params = new URLSearchParams({
+      format: 'json',
+      limit: '1',
+      countrycodes: 'br',
+      q: city.trim(),
+    });
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as Array<{ lat: string; lon: string }>;
+    const first = data[0];
+    if (!first) return null;
+
+    const lat = Number(first.lat);
+    const lon = Number(first.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+    const coords = { lat, lon };
+    saveCoords(city, coords);
+    return coords;
+  } catch {
+    return null;
+  }
 }

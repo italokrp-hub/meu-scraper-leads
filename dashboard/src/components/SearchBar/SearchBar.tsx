@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MapPin, Search, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { MapPin, Search, Loader2, Wifi, WifiOff, Zap } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 const CATEGORY_SUGGESTIONS = [
@@ -13,7 +13,7 @@ const CATEGORY_SUGGESTIONS = [
   'Reciclagem de Eletrônicos',
 ];
 
-const DEPTH_OPTIONS = [1, 2, 3, 4, 5];
+const DEPTH_OPTIONS = [1, 2];
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Enviando busca...',
@@ -26,12 +26,13 @@ export function SearchBar() {
   const { runSearch, isSearching, search, apiOnline, isLoading, leads } = useApp();
   const [category, setCategory] = useState('');
   const [city, setCity] = useState('');
-  const [depth, setDepth] = useState(2);
+  const [depth, setDepth] = useState(1);
+  const [fastMode, setFastMode] = useState(true);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!category.trim() && !city.trim()) return;
-    void runSearch(category, city, { depth, maxTimeSeconds: 300 });
+    void runSearch(category, city, { depth, maxTimeSeconds: 300, fastMode });
   }
 
   const connectionLabel =
@@ -119,6 +120,21 @@ export function SearchBar() {
           </select>
         </div>
 
+        <label
+          className="flex cursor-pointer items-center gap-1.5 self-end rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 transition-colors hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-40"
+          title="Modo rápido usa HTTP stealth (sem Chromium), ideal para o plano gratuito do Render (512MB)."
+        >
+          <input
+            type="checkbox"
+            checked={fastMode}
+            onChange={(e) => setFastMode(e.target.checked)}
+            disabled={isSearching}
+            className="accent-emerald-500"
+          />
+          <Zap size={13} className="text-emerald-400" />
+          Modo rápido
+        </label>
+
         <button
           type="submit"
           disabled={isSearching || (apiOnline === false && search.state !== 'success')}
@@ -132,7 +148,10 @@ export function SearchBar() {
       <p className="mt-2 text-[11px] text-gray-500">
         A busca é enviada ao backend já formatada como “Categoria em Cidade” para priorizar
         resultados no Brasil. Ex.: “{category.trim() || 'Assistência Técnica de Celular'} em{' '}
-        {city.trim() || 'Fortaleza, CE'}”.
+        {city.trim() || 'Fortaleza, CE'}”.{' '}
+        {fastMode
+          ? 'No modo rápido, a cidade é convertida em coordenadas para escanear a região sem navegador (recomendado).'
+          : 'Sem o modo rápido, a busca abre um navegador no servidor — cuidado com o limite de memória do Render.'}
       </p>
 
       {/* Search progress / result summary */}

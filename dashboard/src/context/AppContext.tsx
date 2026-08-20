@@ -3,7 +3,7 @@ import type { Lead, LeadStatus, WhatsAppTemplate } from '../types/lead';
 import type { RawLead } from '../types/lead';
 import { processLeads } from '../utils/phoneUtils';
 import { parseResultsCsv } from '../utils/csv';
-import { createSearchJob, pollJob, downloadJobResults, buildSearchKeyword, checkApiStatus } from '../lib/api';
+import { createSearchJob, pollJob, downloadJobResults, buildSearchKeyword, checkApiStatus, geocodeCity } from '../lib/api';
 import type { SearchState } from '../lib/api';
 import {
   loadTemplates,
@@ -17,6 +17,8 @@ import {
 interface SearchOptions {
   depth: number;
   maxTimeSeconds: number;
+  /** Modo rápido (stealth HTTP) — recomendado no Render free. */
+  fastMode: boolean;
 }
 
 interface AppContextValue {
@@ -156,7 +158,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const runSearch = useCallback(async (category: string, city: string, opts: SearchOptions) => {
     const keyword = buildSearchKeyword(category, city);
     if (!keyword) {
-      setSearch({ ...DEFAULT_SEARCH, state: 'error', error: 'Informe ao menos a categoria ou a cidade.' });
+      setSearch({ ...DEFAULT_SEARCH, state: 'error', error: 'Informe a categoria e a cidade para buscar.' });
       return;
     }
 
@@ -164,6 +166,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSearch({ state: 'running', keyword, jobId: null, status: 'pending', resultCount: 0, error: null });
 
     try {
+      // Modo rápido exige coordenadas do centro da cidade. Se a geocodificação
+      // falhar (ou não houver cidade), cai para o modo navegador.
+      let fastMode = opts.fastMode;
+      let geo: { lat: number; lon: number } | null = null;
+
+      if (fastMode && city.trim()) {
+        geo = await geocodeCity(city);
+        if (!geo) fastMode = false;
+      } else if (fastMode) {
+        fastMode = false;
+      }
+
       const job = await createSearchJob({
         name: keyword.slice(0, 60),
         keywords: [keyword],
@@ -172,6 +186,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         depth: opts.depth,
         radius: 10000,
         maxTimeSeconds: opts.maxTimeSeconds,
+        fastMode,
+        lat: fastMode && geo ? String(geo.lat) : '',
+        lon: fastMode && geo ? String(geo.lon) : '',
       });
 
       if (searchNonce.current !== nonce) return;
