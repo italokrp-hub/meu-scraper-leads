@@ -56,6 +56,57 @@ func TestCreateSeedJobsRejectsEmptyQueryBeforeCustomID(t *testing.T) {
 	}
 }
 
+func TestCreateSeedJobsFastModeDepth1EmitsSingleJob(t *testing.T) {
+	t.Parallel()
+
+	jobs, err := runner.CreateSeedJobs(
+		true,
+		"br",
+		strings.NewReader("assistência técnica de celular em Fortaleza, CE"),
+		1,
+		false,
+		"-3.79,-38.53",
+		15,
+		10000,
+		nil,
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job for depth 1, got %d", len(jobs))
+	}
+}
+
+func TestCreateSeedJobsFastModeDepth3EmitsGrid(t *testing.T) {
+	t.Parallel()
+
+	jobs, err := runner.CreateSeedJobs(
+		true,
+		"br",
+		strings.NewReader("assistência técnica de celular em Fortaleza, CE"),
+		3,
+		false,
+		"-3.79,-38.53",
+		15,
+		10000,
+		nil,
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Depth 3 tiling a 20km-wide area into ~2.2km cells should produce ~9 jobs.
+	if len(jobs) < 4 {
+		t.Fatalf("expected a grid of sub-jobs for depth 3, got %d", len(jobs))
+	}
+}
+
 func TestCreateGridSeedJobsRejectsEmptyQueryBeforeCustomID(t *testing.T) {
 	t.Parallel()
 

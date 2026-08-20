@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/gosom/google-maps-scraper/deduper"
 	"github.com/gosom/google-maps-scraper/exiter"
 	"github.com/gosom/scrapemate"
 )
@@ -33,6 +34,7 @@ type SearchJob struct {
 
 	params                  *MapSearchParams
 	ExitMonitor             exiter.Exiter
+	Deduper                 deduper.Deduper
 	WriterManagedCompletion bool
 }
 
@@ -69,6 +71,15 @@ func WithSearchJobExitMonitor(exitMonitor exiter.Exiter) SearchJobOptions {
 	}
 }
 
+// WithSearchJobDeduper wires a shared deduper into the job. When multiple grid
+// searches cover overlapping areas, the deduper ensures the same place is only
+// emitted once (and therefore written once to the CSV/JSON output).
+func WithSearchJobDeduper(d deduper.Deduper) SearchJobOptions {
+	return func(j *SearchJob) {
+		j.Deduper = d
+	}
+}
+
 func WithSearchJobWriterManagedCompletion() SearchJobOptions {
 	return func(j *SearchJob) {
 		j.WriterManagedCompletion = true
@@ -79,7 +90,7 @@ func (j *SearchJob) ProcessOnFetchError() bool {
 	return true
 }
 
-func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, []scrapemate.IJob, error) {
+func (j *SearchJob) Process(ctx context.Context, resp *scrapemate.Response) (any, []scrapemate.IJob, error) {
 	defer func() {
 		resp.Document = nil
 		resp.Body = nil
@@ -117,6 +128,16 @@ func (j *SearchJob) Process(_ context.Context, resp *scrapemate.Response) (any, 
 		j.params.Location.Lon,
 		j.params.Location.Radius,
 	)
+
+	if j.Deduper != nil {
+		unique := entries[:0]
+		for _, entry := range entries {
+			if j.Deduper.AddIfNotExists(ctx, entry.DedupKey()) {
+				unique = append(unique, entry)
+			}
+		}
+		entries = unique
+	}
 
 	if j.ExitMonitor != nil {
 		j.ExitMonitor.IncrPlacesFound(len(entries))

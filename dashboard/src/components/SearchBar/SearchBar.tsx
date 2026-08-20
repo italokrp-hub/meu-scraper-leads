@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { MapPin, Search, Loader2, Wifi, WifiOff, Zap } from 'lucide-react';
+import { MapPin, Search, Loader2, Wifi, WifiOff, Zap, Lock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+
+const IS_PRODUCTION = import.meta.env.PROD;
 
 const CATEGORY_SUGGESTIONS = [
   'Assistência Técnica de Celular',
@@ -32,9 +34,12 @@ export function SearchBar() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!category.trim() && !city.trim()) return;
+    // Em produção o modo navegador (Chromium) estoura a RAM do Render — trava
+    // o modo rápido para nunca derrubar o servidor.
+    const effectiveFastMode = IS_PRODUCTION ? true : fastMode;
     // Buscas profundas demoram mais; o tempo de espera escala com o depth.
     const pollBudgetSeconds = Math.min(60 + depth * 60, 60 * 60);
-    void runSearch(category, city, { depth, maxTimeSeconds: pollBudgetSeconds, fastMode });
+    void runSearch(category, city, { depth, maxTimeSeconds: pollBudgetSeconds, fastMode: effectiveFastMode });
   }
 
   const connectionLabel =
@@ -124,17 +129,28 @@ export function SearchBar() {
 
         <label
           className="flex cursor-pointer items-center gap-1.5 self-end rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-gray-300 transition-colors hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-40"
-          title="Modo rápido usa HTTP stealth (sem Chromium), ideal para o plano gratuito do Render (512MB)."
+          title={
+            IS_PRODUCTION
+              ? 'No Render o modo navegador estoura a RAM (OOM). O modo rápido é obrigatório em produção.'
+              : 'Modo rápido usa HTTP stealth (sem Chromium), ideal para o plano gratuito do Render (512MB).'
+          }
         >
           <input
             type="checkbox"
             checked={fastMode}
-            onChange={(e) => setFastMode(e.target.checked)}
+            onChange={(e) => {
+              if (IS_PRODUCTION && !e.target.checked) {
+                alert('Modo navegador está bloqueado em produção: ele derruba o servidor do Render (limite de 512 MB). O modo rápido é obrigatório.');
+                setFastMode(true);
+                return;
+              }
+              setFastMode(e.target.checked);
+            }}
             disabled={isSearching}
             className="accent-emerald-500"
           />
-          <Zap size={13} className="text-emerald-400" />
-          Modo rápido
+          {IS_PRODUCTION ? <Lock size={13} className="text-emerald-400" /> : <Zap size={13} className="text-emerald-400" />}
+          {IS_PRODUCTION ? 'Modo rápido (obrigatório)' : 'Modo rápido'}
         </label>
 
         <button
@@ -151,8 +167,8 @@ export function SearchBar() {
         A busca é enviada ao backend já formatada como “Categoria em Cidade” para priorizar
         resultados no Brasil. Ex.: “{category.trim() || 'Assistência Técnica de Celular'} em{' '}
         {city.trim() || 'Fortaleza, CE'}”.{' '}
-        {fastMode
-          ? 'No modo rápido, a cidade é convertida em coordenadas para escanear a região sem navegador (recomendado).'
+        {IS_PRODUCTION || fastMode
+          ? 'No modo rápido, a cidade é convertida em coordenadas e a região é varrida em grade para capturar todos os estabelecimentos sem navegador (recomendado).'
           : 'Sem o modo rápido, a busca abre um navegador no servidor — cuidado com o limite de memória do Render.'}
       </p>
 

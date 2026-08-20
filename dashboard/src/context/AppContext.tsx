@@ -166,9 +166,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSearch({ state: 'running', keyword, jobId: null, status: 'pending', resultCount: 0, error: null });
 
     try {
-      // Modo rápido exige coordenadas do centro da cidade. Se a geocodificação
-      // falhar (ou não houver cidade), cai para o modo navegador.
-      let fastMode = opts.fastMode;
+      // Em produção o modo navegador (Chromium) estoura a RAM do Render — força
+      // o modo rápido independentemente do que a interface enviar.
+      let fastMode = import.meta.env.PROD ? true : opts.fastMode;
       let geo: { lat: number; lon: number } | null = null;
 
       if (fastMode && city.trim()) {

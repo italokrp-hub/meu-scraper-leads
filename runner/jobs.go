@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"plugin"
@@ -85,8 +86,6 @@ func CreateSeedJobs(
 		query := q.text
 		id := q.id
 
-		var job scrapemate.IJob
-
 		if !fastmode {
 			opts := []gmaps.GmapJobOptions{}
 
@@ -102,34 +101,155 @@ func CreateSeedJobs(
 				opts = append(opts, gmaps.WithExtraReviews())
 			}
 
-			job = gmaps.NewGmapJob(id, langCode, query, maxDepth, email, geoCoordinates, zoom, opts...)
+			jobs = append(jobs, gmaps.NewGmapJob(id, langCode, query, maxDepth, email, geoCoordinates, zoom, opts...))
 		} else {
-			jparams := gmaps.MapSearchParams{
-				Location: gmaps.MapLocation{
-					Lat:     lat,
-					Lon:     lon,
-					ZoomLvl: float64(zoom),
-					Radius:  radius,
-				},
-				Query:     query,
-				ViewportW: 1920,
-				ViewportH: 450,
-				Hl:        langCode,
-			}
-
 			opts := []gmaps.SearchJobOptions{}
 
 			if exitMonitor != nil {
 				opts = append(opts, gmaps.WithSearchJobExitMonitor(exitMonitor))
 			}
 
-			job = gmaps.NewSearchJob(&jparams, opts...)
+			if dedup != nil {
+				opts = append(opts, gmaps.WithSearchJobDeduper(dedup))
+			}
+
+			if maxDepth > 1 {
+				// Profundidade acima de 1: divide a área ao redor da cidade em
+				// uma grade de sub-buscas. Cada célula roda uma busca stealth-HTTP
+				// com zoom ajustado ao tamanho da célula, contornando o limite de
+				// ~7 resultados que uma única coordenada retorna.
+				gridJobs := createFastSearchGridJobs(query, langCode, lat, lon, radius, zoom, maxDepth, opts)
+				jobs = append(jobs, gridJobs...)
+			} else {
+				jparams := gmaps.MapSearchParams{
+					Location: gmaps.MapLocation{
+						Lat:     lat,
+						Lon:     lon,
+						ZoomLvl: float64(zoom),
+						Radius:  radius,
+					},
+					Query:     query,
+					ViewportW: 1920,
+					ViewportH: 450,
+					Hl:        langCode,
+				}
+
+				job := gmaps.NewSearchJob(&jparams, opts...)
+				jobs = append(jobs, job)
+			}
 		}
+	}
+
+	return jobs, scanner.Err()
+}
+
+// createFastSearchGridJobs splits the area around (lat, lon) into a
+// maxDepth×maxDepth grid of sub-searches. Each cell runs a single stealth-HTTP
+// search with a zoom level matched to the cell size, so each request returns
+// the small result set that Google exposes per viewport. Tiling the whole
+// radius with cells recovers far more of the municipality than the ~7 results
+// a single coordinate search returns.
+//
+// Deduplication across cells is handled by the shared deduper wired through
+// opts, guaranteeing the final CSV/JSON has no repeated places.
+func createFastSearchGridJobs(
+	query, langCode string,
+	lat, lon, radius float64,
+	zoom, maxDepth int,
+	opts []gmaps.SearchJobOptions,
+) []scrapemate.IJob {
+	const (
+		kmPerDegreeLat  = 111.32
+		defaultRadiusKm = 10.0
+		minCosLatitude  = 1e-6
+	)
+
+	if radius <= 0 {
+		radius = defaultRadiusKm * 1000
+	}
+
+	radiusKm := radius / 1000
+
+	latHalf := radiusKm / kmPerDegreeLat
+
+	cosLat := math.Cos(lat * math.Pi / 180)
+	if cosLat < minCosLatitude {
+		cosLat = minCosLatitude
+	}
+
+	lonHalf := radiusKm / (kmPerDegreeLat * cosLat)
+
+	bbox := grid.BoundingBox{
+		MinLat: lat - latHalf,
+		MaxLat: lat + latHalf,
+		MinLon: lon - lonHalf,
+		MaxLon: lon + lonHalf,
+	}
+
+	cellSizeKm := (2 * radiusKm) / float64(maxDepth)
+
+	cells := grid.GenerateCells(bbox, cellSizeKm)
+	if len(cells) == 0 {
+		return nil
+	}
+
+	jobs := make([]scrapemate.IJob, 0, len(cells))
+
+	for _, cell := range cells {
+		cellRadiusMeters := cellSizeKm * 1000
+
+		jparams := gmaps.MapSearchParams{
+			Location: gmaps.MapLocation{
+				Lat:     cell.Lat,
+				Lon:     cell.Lon,
+				ZoomLvl: float64(zoomForCell(cell.Lat, cellSizeKm, zoom)),
+				Radius:  cellRadiusMeters,
+			},
+			Query:     query,
+			ViewportW: 1920,
+			ViewportH: 450,
+			Hl:        langCode,
+		}
+
+		job := gmaps.NewSearchJob(&jparams, opts...)
 
 		jobs = append(jobs, job)
 	}
 
-	return jobs, scanner.Err()
+	return jobs
+}
+
+// zoomForCell returns the Google Maps zoom level that makes a cell of the given
+// size roughly fill the horizontal viewport of a stealth search. It clamps to
+// [minCellZoom, maxZoom] so cells stay readable without exceeding the zoom the
+// user originally requested.
+func zoomForCell(lat, cellSizeKm float64, maxZoom int) int {
+	const (
+		metersPerPixelZoomZero = 156543.03
+		viewportWidthPx        = 600
+		minCellZoom            = 10
+		minCosLatitude         = 1e-6
+	)
+
+	cosLat := math.Cos(lat * math.Pi / 180)
+	if cosLat < minCosLatitude {
+		cosLat = minCosLatitude
+	}
+
+	cellMeters := cellSizeKm * 1000
+
+	zoom := math.Log2(metersPerPixelZoomZero * cosLat * viewportWidthPx / cellMeters)
+
+	z := int(math.Round(zoom))
+	if z < minCellZoom {
+		z = minCellZoom
+	}
+
+	if maxZoom > 0 && z > maxZoom {
+		z = maxZoom
+	}
+
+	return z
 }
 
 // CreateGridSeedJobs reads search queries from r and produces one GmapJob per

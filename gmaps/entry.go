@@ -1016,6 +1016,31 @@ type EntryWithDistance struct {
 	Distance float64
 }
 
+// DedupKey returns a stable string that uniquely identifies the place across
+// multiple searches. Results coming from overlapping grid cells of the same
+// place produce identical keys, which the scraper uses to drop duplicates.
+func (e *Entry) DedupKey() string {
+	if e.PlaceID != "" {
+		return e.PlaceID
+	}
+
+	if e.Cid != "" {
+		return e.Cid
+	}
+
+	if e.DataID != "" {
+		return e.DataID
+	}
+
+	if e.Title != "" && e.Address != "" {
+		return e.Title + "|" + e.Address
+	}
+
+	return fmt.Sprintf("%g,%g", e.Latitude, e.Longtitude)
+}
+
+// filterAndSortEntriesWithinRadius filters entries to those within `radius`
+// meters of (lat, lon) and sorts them by ascending distance.
 func filterAndSortEntriesWithinRadius(entries []*Entry, lat, lon, radius float64) []*Entry {
 	withinRadiusIterator := func(yield func(EntryWithDistance) bool) {
 		for _, entry := range entries {
