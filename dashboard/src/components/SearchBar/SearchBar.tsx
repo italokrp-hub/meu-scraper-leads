@@ -13,7 +13,7 @@ const CATEGORY_SUGGESTIONS = [
   'Reciclagem de Eletrônicos',
 ];
 
-const DEPTH_OPTIONS = [1, 2];
+const DEPTH_OPTIONS = [1, 2, 5, 10, 15];
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Enviando busca...',
@@ -32,7 +32,9 @@ export function SearchBar() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!category.trim() && !city.trim()) return;
-    void runSearch(category, city, { depth, maxTimeSeconds: 300, fastMode });
+    // Buscas profundas demoram mais; o tempo de espera escala com o depth.
+    const pollBudgetSeconds = Math.min(60 + depth * 60, 60 * 60);
+    void runSearch(category, city, { depth, maxTimeSeconds: pollBudgetSeconds, fastMode });
   }
 
   const connectionLabel =
@@ -114,7 +116,7 @@ export function SearchBar() {
           >
             {DEPTH_OPTIONS.map((d) => (
               <option key={d} value={d}>
-                {d} {d === 1 ? 'página' : 'páginas'}
+                {d >= 15 ? `Profunda (${d} páginas)` : `${d} ${d === 1 ? 'página' : 'páginas'}`}
               </option>
             ))}
           </select>
